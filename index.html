@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>トランジスタ静特性 リアルタイム測定妥当性検証システム</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- MathJax の設定と読み込み (数式を美しく表示する) -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            options: {
+                ignoreHtmlClass: 'tex2jax_ignore',
+                processHtmlClass: 'tex2jax_process'
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen font-sans">
+
+    <!-- ヘッダー -->
+    <header class="bg-gradient-to-r from-blue-700 to-indigo-800 text-white shadow-md py-4 px-6">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-xl md:text-2xl font-extrabold flex items-center gap-2">
+                    <span>🔌</span>
+                    トランジスタ静特性 測定妥当性検証システム
+                </h1>
+                <p class="text-blue-100 text-xs mt-1">
+                    2SC1815等の小信号トランジスタ静特性実験において、入力された測定値の物理的整合性を瞬時に可視化・判定します。
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="loadSampleData()" class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold px-3 py-1.5 rounded shadow text-xs transition">
+                    サンプルデータをロード
+                </button>
+                <button onclick="exportAllToCSV()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition flex items-center gap-1">
+                    <span>💾</span> 全データ一括CSV保存
+                </button>
+                <button onclick="resetData()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition">
+                    リセット
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        <!-- ナビゲーションタブ -->
+        <div class="flex border-b border-slate-200 mb-6 overflow-x-auto custom-scrollbar">
+            <button onclick="switchTab('tab-output')" id="btn-tab-output" class="tab-btn px-4 py-2 font-semibold text-blue-600 border-b-2 border-blue-600 focus:outline-none transition whitespace-nowrap text-sm">
+                1. 出力特性 ($V_{CE} - I_C$)
+            </button>
+            <button onclick="switchTab('tab-transfer')" id="btn-tab-transfer" class="tab-btn px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 focus:outline-none transition whitespace-nowrap text-sm">
+                2. 伝達特性 ($I_B - I_C$)
+            </button>
+            <button onclick="switchTab('tab-input')" id="btn-tab-input" class="tab-btn px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 focus:outline-none transition whitespace-nowrap text-sm">
+                3. 入力特性 ($V_{BE} - I_B$)
+            </button>
+            <button onclick="switchTab('tab-loadline')" id="btn-tab-loadline" class="tab-btn px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 focus:outline-none transition whitespace-nowrap text-sm">
+                4. 直流負荷線 ($E_C=9\text{V}, R_C=390\Omega$)
+            </button>
+        </div>
+
+        <!-- ＝＝＝＝＝ TAB 1: 出力特性 (V_CE - I_C) ＝＝＝＝＝ -->
+        <div id="tab-output" class="tab-content block space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 左側：データ入力カード -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 lg:col-span-2">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                            <span class="w-2 h-5 bg-blue-600 rounded-full inline-block"></span>
+                            測定データの入力 : $V_{CE} - I_C$ 特性 (出力特性)
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            <button onclick="exportOutputToCSV()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-2 py-1 rounded text-xs transition">
+                                📥 CSV保存
+                            </button>
+                            <span class="text-xs bg-blue-50 text-blue-700 font-medium px-2 py-0.5 rounded-full">単位: mA</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto custom-scrollbar border border-slate-150 rounded-lg">
+                        <table class="w-full text-xs text-center">
+                            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                <tr>
+                                    <th class="p-2 font-semibold text-left whitespace-nowrap sticky left-0 bg-slate-50">ベース電流 $I_B$</th>
+                                    <th class="p-2 font-semibold">0.0V</th>
+                                    <th class="p-2 font-semibold">0.2V</th>
+                                    <th class="p-2 font-semibold">0.4V</th>
+                                    <th class="p-2 font-semibold">0.6V</th>
+                                    <th class="p-2 font-semibold">0.8V</th>
+                                    <th class="p-2 font-semibold">1.0V</th>
+                                    <th class="p-2 font-semibold">2.0V</th>
+                                    <th class="p-2 font-semibold">5.0V</th>
+                                    <th class="p-2 font-semibold">8.0V</th>
+                                    <th class="p-2 font-semibold">10.0V</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                <tr id="row-ib-20" class="hover:bg-slate-50/50">
+                                    <td class="p-2 font-bold text-left text-indigo-700 bg-white sticky left-0 border-r border-slate-100">$I_B = 20\,\mu\text{A}$</td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="0.0" value="0.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="0.2" value="1.2"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="0.4" value="2.2"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="0.6" value="2.9"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="0.8" value="3.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="1.0" value="3.1"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="2.0" value="3.3"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="5.0" value="3.4"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="8.0" value="3.6"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="20" data-vce="10.0" value="3.7"></td>
+                                </tr>
+                                <tr id="row-ib-40" class="hover:bg-slate-50/50">
+                                    <td class="p-2 font-bold text-left text-emerald-700 bg-white sticky left-0 border-r border-slate-100">$I_B = 40\,\mu\text{A}$</td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="0.0" value="0.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="0.2" value="2.3"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="0.4" value="4.4"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="0.6" value="5.8"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="0.8" value="6.1"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="1.0" value="6.3"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="2.0" value="6.5"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="5.0" value="6.8"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="8.0" value="7.1"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="40" data-vce="10.0" value="7.3"></td>
+                                </tr>
+                                <tr id="row-ib-60" class="hover:bg-slate-50/50">
+                                    <td class="p-2 font-bold text-left text-amber-700 bg-white sticky left-0 border-r border-slate-100">$I_B = 60\,\mu\text{A}$</td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="0.0" value="0.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="0.2" value="3.5"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="0.4" value="6.8"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="0.6" value="8.8"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="0.8" value="9.2"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="1.0" value="9.4"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="2.0" value="9.8"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="5.0" value="10.2"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="8.0" value="10.7"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="60" data-vce="10.0" value="11.0"></td>
+                                </tr>
+                                <tr id="row-ib-80" class="hover:bg-slate-50/50">
+                                    <td class="p-2 font-bold text-left text-pink-700 bg-white sticky left-0 border-r border-slate-100">$I_B = 80\,\mu\text{A}$</td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="0.0" value="0.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="0.2" value="4.6"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="0.4" value="9.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-ib="80" data-vce="0.6" value="11.6"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="0.8" value="12.1"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="1.0" value="12.5"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="2.0" value="13.1"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="5.0" value="13.7"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="8.0" value="14.4"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateOutputData()" class="out-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-blue-500 outline-none" data-ib="80" data-vce="10.0" value="14.8"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 右側：妥当性判定ボード -->
+                <div class="bg-white rounded-xl shadow-md p-4 border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center gap-1">
+                            <span class="text-blue-500">🩺</span>
+                            リアルタイム診断結果
+                        </h3>
+                        <div id="diagnostics-output" class="space-y-2">
+                            <!-- JSで判定を出力 -->
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 bg-blue-50/50 p-2.5 rounded text-[11px] text-blue-800">
+                        <span class="font-bold block mb-0.5">💡 物理的妥当性チェック of 基準:</span>
+                        <ul class="list-disc list-inside space-y-0.5">
+                            <li>$V_{CE}$ 増加時に $I_C$ が減少していないか</li>
+                            <li>低電圧部 (0〜1V) でシャープに急峻に立ち上がっているか</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下側：グラフ描画カード -->
+            <div class="bg-white rounded-xl shadow-md p-4 border border-slate-100">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-bold text-slate-800">📊 出力特性グラフ ($V_{CE} - I_C$) <span class="text-xs text-slate-500 font-normal">※線形(Linear)数値軸</span></h3>
+                    <div class="flex gap-1.5">
+                        <button onclick="optimizeYScale('output')" class="text-[11px] bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold py-1 px-2 rounded transition">
+                            Y軸最適化
+                        </button>
+                        <button onclick="resetYScale('output')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            Y軸リセット
+                        </button>
+                        <button onclick="downloadChart('chart-output')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            保存
+                        </button>
+                    </div>
+                </div>
+                <div class="h-80 w-full">
+                    <canvas id="chart-output"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ＝＝＝＝＝ TAB 2: 伝達特性 (I_B - I_C) ＝＝＝＝＝ -->
+        <div id="tab-transfer" class="tab-content hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 左側：データ入力カード -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 lg:col-span-2">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <span class="w-2 h-5 bg-purple-600 rounded-full inline-block"></span>
+                            測定データの入力 : $I_B - I_C$ 特性 (伝達特性)
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            <button onclick="exportTransferToCSV()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-2 py-1 rounded text-xs transition">
+                                📥 CSV保存
+                            </button>
+                            <span class="text-xs bg-purple-50 text-purple-700 font-medium px-2 py-0.5 rounded-full">単位: mA</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto custom-scrollbar border border-slate-150 rounded-lg">
+                        <table class="w-full text-xs text-center">
+                            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                <tr>
+                                    <th class="p-2 font-semibold text-left whitespace-nowrap sticky left-0 bg-slate-50">パラメータ</th>
+                                    <th class="p-2 font-semibold">0.0 μA</th>
+                                    <th class="p-2 font-semibold">10.0 μA</th>
+                                    <th class="p-2 font-semibold">20.0 μA</th>
+                                    <th class="p-2 font-semibold">30.0 μA</th>
+                                    <th class="p-2 font-semibold">40.0 μA</th>
+                                    <th class="p-2 font-semibold">50.0 μA</th>
+                                    <th class="p-2 font-semibold">60.0 μA</th>
+                                    <th class="p-2 font-semibold">70.0 μA</th>
+                                    <th class="p-2 font-semibold">80.0 μA</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="p-2 font-bold text-left text-purple-700 bg-white sticky left-0 border-r border-slate-100">$I_C$ [mA]</td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="0.0" value="0.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="10.0" value="1.62"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="20.0" value="3.31"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="30.0" value="4.90"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="40.0" value="6.52"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="50.0" value="8.15"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="60.0" value="9.80"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="70.0" value="11.45"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateTransferData()" class="tf-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-purple-500 outline-none" data-ib="80.0" value="13.10"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 右側：妥当性判定ボード -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center gap-1">
+                            <span class="text-purple-500">🩺</span>
+                            リアルタイム診断結果
+                        </h3>
+                        <div id="diagnostics-transfer" class="space-y-2">
+                            <!-- JSで判定を出力 -->
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 bg-purple-50/50 p-2.5 rounded text-[11px] text-purple-800">
+                        <span class="font-bold block mb-0.5">💡 物理的妥当性チェックの基準:</span>
+                        <ul class="list-disc list-inside space-y-0.5">
+                            <li>直流電流増幅率 $h_{FE}$ ($I_C / I_B$) が直線的かつ 100〜400 の範囲内に収まっているか</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下側：グラフ描画カード -->
+            <div class="bg-white rounded-xl shadow-md p-4 border border-slate-100">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-bold text-slate-800">📊 伝達特性グラフ ($I_B - I_C$)</h3>
+                    <div class="flex gap-1.5">
+                        <button onclick="optimizeYScale('transfer')" class="text-[11px] bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold py-1 px-2 rounded transition">
+                            Y軸最適化
+                        </button>
+                        <button onclick="resetYScale('transfer')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            Y軸リセット
+                        </button>
+                        <button onclick="downloadChart('chart-transfer')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            保存
+                        </button>
+                    </div>
+                </div>
+                <div class="h-80 w-full">
+                    <canvas id="chart-transfer"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ＝＝＝＝＝ TAB 3: 入力特性 (V_BE - I_B) ＝＝＝＝＝ -->
+        <div id="tab-input" class="tab-content hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 左側：データ入力カード -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 lg:col-span-2">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                            <span class="w-2 h-5 bg-emerald-600 rounded-full inline-block"></span>
+                            測定データの入力 : $V_{BE} - I_B$ 特性 (入力特性)
+                        </h2>
+                        <button onclick="exportInputToCSV()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-2 py-1 rounded text-xs transition">
+                            📥 CSV保存
+                        </button>
+                    </div>
+                    
+                    <p class="text-xs text-slate-500 mb-4">
+                        💡 **実験手順に沿った測定入力**: 低電流域は **電圧指定測定**（$V_{BE}$ を固定し $I_B$ を測定）、高電流域は **電流指定測定**（$I_B$ を固定し $V_{BE}$ を測定）のハイブリッド測定テーブルです。網掛けセル（指定値）以外の白い入力欄を記録・修正してください。
+                    </p>
+                    
+                    <div class="overflow-x-auto custom-scrollbar border border-slate-150 rounded-lg">
+                        <table class="w-full text-xs text-center border-collapse">
+                            <thead class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                                <tr>
+                                    <th rowspan="2" class="p-3 font-bold text-left bg-slate-50 border-r border-slate-200 whitespace-nowrap sticky left-0">パラメータ</th>
+                                    <!-- 前半：V_BE 指定ステップ -->
+                                    <th colspan="5" class="p-1 font-bold bg-blue-50/50 border-r border-slate-200 text-blue-800">【前半】$V_{BE}$ を指定して $I_B$ を測定</th>
+                                    <!-- 後半：I_B 指定ステップ -->
+                                    <th colspan="4" class="p-1 font-bold bg-purple-50/50 text-purple-800">【後半】$I_B$ を指定して $V_{BE}$ を測定</th>
+                                </tr>
+                                <tr class="bg-slate-50">
+                                    <th class="p-2 border-r border-slate-200">1点目</th>
+                                    <th class="p-2 border-r border-slate-200">2点目</th>
+                                    <th class="p-2 border-r border-slate-200">3点目</th>
+                                    <th class="p-2 border-r border-slate-200">4点目</th>
+                                    <th class="p-2 border-r border-slate-200 border-b-2 border-b-blue-200">5点目</th>
+                                    <th class="p-2 border-r border-slate-200">6点目</th>
+                                    <th class="p-2 border-r border-slate-200">7点目</th>
+                                    <th class="p-2 border-r border-slate-200">8点目</th>
+                                    <th class="p-2">9点目</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                <!-- 電圧行 V_BE [V] -->
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="p-3 font-bold text-left bg-slate-50 border-r border-slate-200 sticky left-0 whitespace-nowrap">$V_{BE}$ [V]</td>
+                                    <!-- 前半: V_BEは指定（網掛け固定） -->
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200">0.2</td>
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200">0.3</td>
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200">0.4</td>
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200">0.5</td>
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200 border-b-2 border-b-blue-200">0.6</td>
+                                    <!-- 後半: V_BEは実測（入力可能） -->
+                                    <td class="border-r border-slate-200"><input type="number" step="0.001" min="0" max="1.5" oninput="updateInputData()" class="in-vbe w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none" data-idx="5" value="0.602"></td>
+                                    <td class="border-r border-slate-200"><input type="number" step="0.001" min="0" max="1.5" oninput="updateInputData()" class="in-vbe w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none" data-idx="6" value="0.625"></td>
+                                    <td class="border-r border-slate-200"><input type="number" step="0.001" min="0" max="1.5" oninput="updateInputData()" class="in-vbe w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none" data-idx="7" value="0.654"></td>
+                                    <td><input type="number" step="0.001" min="0" max="1.5" oninput="updateInputData()" class="in-vbe w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none" data-idx="8" value="0.690"></td>
+                                </tr>
+                                <!-- 電流行 I_B [μA] -->
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="p-3 font-bold text-left bg-slate-50 border-r border-slate-200 sticky left-0 whitespace-nowrap">$I_B$ [μA]</td>
+                                    <!-- 前半: I_Bは実測（入力可能） -->
+                                    <td class="border-r border-slate-200"><input type="number" step="0.1" min="0" oninput="updateInputData()" class="in-ib w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none" data-idx="0" value="0.0"></td>
+                                    <td class="border-r border-slate-200"><input type="number" step="0.1" min="0" oninput="updateInputData()" class="in-ib w-16 p-1 text-right border border-slate-200 rounded text-xs" data-idx="1" value="0.0"></td>
+                                    <td class="border-r border-slate-200"><input type="number" step="0.1" min="0" oninput="updateInputData()" class="in-ib w-16 p-1 text-right border border-slate-200 rounded text-xs" data-idx="2" value="0.1"></td>
+                                    <td class="border-r border-slate-200"><input type="number" step="0.1" min="0" oninput="updateInputData()" class="in-ib w-16 p-1 text-right border border-slate-200 rounded text-xs" data-idx="3" value="0.5"></td>
+                                    <td class="border-r border-slate-200 border-b-2 border-b-blue-200"><input type="number" step="0.1" min="0" oninput="updateInputData()" class="in-ib w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none" data-idx="4" value="9.4"></td>
+                                    <!-- 後半: I_Bは指定（網掛け固定） -->
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200">10.0</td>
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200">20.0</td>
+                                    <td class="bg-slate-100 text-slate-500 font-semibold border-r border-slate-200">50.0</td>
+                                    <td class="bg-slate-100 text-slate-500 font-semibold">80.0</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 右側：妥当性判定ボード -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center gap-1">
+                            <span class="text-emerald-500">🩺</span>
+                            リアルタイム診断結果
+                        </h3>
+                        <div id="diagnostics-input" class="space-y-2">
+                            <!-- JSで判定を出力 -->
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 bg-emerald-50/50 p-2.5 rounded text-[11px] text-emerald-800">
+                        <span class="font-bold block mb-0.5">💡 物理的妥当性チェックの基準:</span>
+                        <ul class="list-disc list-inside space-y-0.5">
+                            <li>ベース電流 $I_{B}$ の増加とともに、実測の $V_{BE}$ が順方向飽和電圧（約0.6V〜0.7V）へと緩やかに収束していく動きを追従します。</li>
+                            <li>電圧指定ステップと電流指定ステップの全9点の座標を結んで、滑らかなダイオードの指数関数的立ち上がり曲線が形成されているかを検証します。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下側：グラフ描画カード -->
+            <div class="bg-white rounded-xl shadow-md p-4 border border-slate-100">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-bold text-slate-800">📊 入力特性グラフ ($V_{BE} - I_B$) <span class="text-xs text-slate-500 font-normal">※線形(Linear)数値軸</span></h3>
+                    <div class="flex gap-1.5">
+                        <button onclick="optimizeYScale('input')" class="text-[11px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold py-1 px-2 rounded transition">
+                            Y軸最適化
+                        </button>
+                        <button onclick="resetYScale('input')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            Y軸リセット
+                        </button>
+                        <button onclick="downloadChart('chart-input')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            保存
+                        </button>
+                    </div>
+                </div>
+                <div class="h-80 w-full">
+                    <canvas id="chart-input"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ＝＝＝＝＝ TAB 4: 直流負荷線 (V_CE - I_C) ＝＝＝＝＝ -->
+        <div id="tab-loadline" class="tab-content hidden space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 左側：データ入力カード -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 lg:col-span-2">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                            <span class="w-2 h-5 bg-rose-600 rounded-full inline-block"></span>
+                            測定データの入力 : 直流負荷線特性 ($E_C=9\text{V}, R_C=390\Omega$)
+                        </h2>
+                        <div class="flex items-center gap-2">
+                            <button onclick="exportLoadlineToCSV()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-2 py-1 rounded text-xs transition">
+                                📥 CSV保存
+                            </button>
+                            <span class="text-xs bg-rose-50 text-rose-700 font-medium px-2 py-0.5 rounded-full">単位: mA</span>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto custom-scrollbar border border-slate-150 rounded-lg">
+                        <table class="w-full text-xs text-center">
+                            <thead class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                                <tr>
+                                    <th class="p-2 font-semibold text-left whitespace-nowrap sticky left-0 bg-slate-50">設定値 $V_{CE}$</th>
+                                    <th class="p-2 font-semibold">9.0V</th>
+                                    <th class="p-2 font-semibold">8.0V</th>
+                                    <th class="p-2 font-semibold">7.0V</th>
+                                    <th class="p-2 font-semibold">6.0V</th>
+                                    <th class="p-2 font-semibold">5.0V</th>
+                                    <th class="p-2 font-semibold">4.0V</th>
+                                    <th class="p-2 font-semibold">3.0V</th>
+                                    <th class="p-2 font-semibold">2.0V</th>
+                                    <th class="p-2 font-semibold">1.0V</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-200">
+                                <tr class="hover:bg-slate-50/50">
+                                    <td class="p-2 font-bold text-left text-rose-700 bg-white sticky left-0 border-r border-slate-100">実測 $I_C$</td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="9.0" value="0.0"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="8.0" value="2.56"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="7.0" value="5.13"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="6.0" value="7.69"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="5.0" value="10.26"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="4.0" value="12.82"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="3.0" value="15.38"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="2.0" value="17.95"></td>
+                                    <td><input type="number" step="0.01" min="0" oninput="updateLoadlineData()" class="ld-input w-16 p-1 text-right border border-slate-200 rounded text-xs focus:ring-1 focus:ring-rose-500 outline-none" data-vce="1.0" value="20.51"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 右側：妥当性判定ボード -->
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center gap-1">
+                            <span class="text-rose-500">🩺</span>
+                            リアルタイム診断結果
+                        </h3>
+                        <div id="diagnostics-loadline" class="space-y-2">
+                            <!-- JSで判定を出力 -->
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-slate-100 bg-rose-50/50 p-2.5 rounded text-[11px] text-rose-800">
+                        <span class="font-bold block mb-0.5">💡 物理的妥当性チェックの基準:</span>
+                        <ul class="list-disc list-inside space-y-0.5">
+                            <li>実測の ($V_{CE}$, $I_C$) が、キルヒホッフの法則に基づく理論負荷線上を正確に追従しているか</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下側：グラフ描画カード -->
+            <div class="bg-white rounded-xl shadow-md p-4 border border-slate-100">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-bold text-slate-800">📊 直流負荷線グラフ ($V_{CE} - I_C$ と理論線)</h3>
+                    <div class="flex gap-1.5">
+                        <button onclick="optimizeYScale('loadline')" class="text-[11px] bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold py-1 px-2 rounded transition">
+                            Y軸最適化
+                        </button>
+                        <button onclick="resetYScale('loadline')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            Y軸リセット
+                        </button>
+                        <button onclick="downloadChart('chart-loadline')" class="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-1 px-2 rounded transition">
+                            保存
+                        </button>
+                    </div>
+                </div>
+                <div class="h-80 w-full">
+                    <canvas id="chart-loadline"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-slate-900 text-slate-400 py-4 mt-8 text-center text-xs">
+        <p>© 2026 測定データ妥当性検証システム - トランジスタ静特性実験補助ツール</p>
+    </footer>
+
+    <script>
+        // グローバル変数：チャートオブジェクト
+        let chartOutput = null;
+        let chartInput = null;
+        let chartTransfer = null;
+        let chartLoadline = null;
+
+        // データ設定（測定点を 0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 5.0, 8.0, 10.0 に再構成）
+        // 入力特性を（前半0.2V〜0.6Vの5点、後半10uA〜80uAの4点：計9点）に構成
+        const sampleData = {
+            output: {
+                20: [0.0, 1.2, 2.2, 2.9, 3.0, 3.1, 3.3, 3.4, 3.6, 3.7],
+                40: [0.0, 2.3, 4.4, 5.8, 6.1, 6.3, 6.5, 6.8, 7.1, 7.3],
+                60: [0.0, 3.5, 6.8, 8.8, 9.2, 9.4, 9.8, 10.2, 10.7, 11.0],
+                80: [0.0, 4.6, 9.0, 11.6, 12.1, 12.5, 13.1, 13.7, 14.4, 14.8]
+            },
+            input: {
+                // 前半 V_BE 指定ステップに対応する I_B [uA] の測定値（0.0Vを削除した5要素構成）
+                vbe_fixed_vbe: [0.2, 0.3, 0.4, 0.5, 0.6],
+                vbe_fixed_ib:  [0.0, 0.0, 0.1, 0.5, 9.4],
+                // 後半 I_B 指定ステップに対応する V_BE [V] の測定値（4要素）
+                ib_fixed_ib:   [10.0, 20.0, 50.0, 80.0],
+                ib_fixed_vbe:  [0.602, 0.625, 0.654, 0.690]
+            },
+            transfer: {
+                ib: [0, 10, 20, 30, 40, 50, 60, 70, 80],
+                ic: [0.0, 1.62, 3.31, 4.90, 6.52, 8.15, 9.80, 11.45, 13.10]
+            },
+            loadline: {
+                vce: [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+                ic: [0.0, 2.56, 5.13, 7.69, 10.26, 12.82, 15.38, 17.95, 20.51]
+            }
+        };
+
+        // タブ切り替え制御
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.className = "tab-btn px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 focus:outline-none transition whitespace-nowrap text-sm";
+            });
+
+            const activeBtn = document.getElementById('btn-' + tabId);
+            if (activeBtn) {
+                activeBtn.className = "tab-btn px-4 py-2 font-semibold text-blue-600 border-b-2 border-blue-600 focus:outline-none transition whitespace-nowrap text-sm";
+            }
+
+            // グラフを再描画
+            setTimeout(() => {
+                if (tabId === 'tab-output' && chartOutput) chartOutput.resize();
+                if (tabId === 'tab-input' && chartInput) chartInput.resize();
+                if (tabId === 'tab-transfer' && chartTransfer) chartTransfer.resize();
+                if (tabId === 'tab-loadline' && chartLoadline) chartLoadline.resize();
+            }, 50);
+        }
+
+        // 初期ロード
+        window.onload = function() {
+            try {
+                initCharts();
+                loadSampleData();
+            } catch (e) {
+                console.error("Initialization error: ", e);
+            }
+        };
+
+        // --- Y軸メモリ（最大値）の最適化処理 ---
+        function optimizeYScale(type) {
+            try {
+                if (type === 'output' && chartOutput) {
+                    let maxVal = 0;
+                    chartOutput.data.datasets.forEach(dataset => {
+                        dataset.data.forEach(pt => {
+                            if (pt.y > maxVal) maxVal = pt.y;
+                        });
+                    });
+                    chartOutput.options.scales.y.max = maxVal > 0 ? Math.ceil(maxVal * 1.15) : 5;
+                    chartOutput.update();
+                } 
+                else if (type === 'input' && chartInput) {
+                    let maxVal = 0;
+                    // 測定プロット(dataset[0])または近似曲線(dataset[1])の最大値
+                    chartInput.data.datasets.forEach(dataset => {
+                        dataset.data.forEach(pt => {
+                            if (pt.y > maxVal) maxVal = pt.y;
+                        });
+                    });
+                    chartInput.options.scales.y.max = maxVal > 0 ? Math.ceil(maxVal * 1.15) : 10;
+                    chartInput.update();
+                } 
+                else if (type === 'transfer' && chartTransfer) {
+                    let maxVal = 0;
+                    chartTransfer.data.datasets[0].data.forEach(pt => {
+                        if (pt.y > maxVal) maxVal = pt.y;
+                    });
+                    chartTransfer.options.scales.y.max = maxVal > 0 ? Math.ceil(maxVal * 1.15) : 5;
+                    chartTransfer.update();
+                } 
+                else if (type === 'loadline' && chartLoadline) {
+                    let maxVal = 0;
+                    chartLoadline.data.datasets.forEach(dataset => {
+                        dataset.data.forEach(pt => {
+                            if (pt.y > maxVal) maxVal = pt.y;
+                        });
+                    });
+                    chartLoadline.options.scales.y.max = maxVal > 0 ? Math.ceil(maxVal * 1.15) : 25;
+                    chartLoadline.update();
+                }
+            } catch(e) {
+                console.error("Scale optimization failed: ", e);
+            }
+        }
+
+        // Y軸メモリのデフォルト値への復元（リセット）
+        function resetYScale(type) {
+            try {
+                if (type === 'output' && chartOutput) {
+                    chartOutput.options.scales.y.max = 16;
+                    chartOutput.update();
+                } else if (type === 'input' && chartInput) {
+                    chartInput.options.scales.y.max = 90;
+                    chartInput.update();
+                } else if (type === 'transfer' && chartTransfer) {
+                    chartTransfer.options.scales.y.max = 15;
+                    chartTransfer.update();
+                } else if (type === 'loadline' && chartLoadline) {
+                    chartLoadline.options.scales.y.max = 25;
+                    chartLoadline.update();
+                }
+            } catch(e) {
+                console.error("Scale reset failed: ", e);
+            }
+        }
+
+        // --- 各特性データ更新 & 描画 処理 ---
+
+        // 1. 出力特性 (V_CE - I_C) : 10点測定スケール
+        function updateOutputData() {
+            try {
+                const vceX = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 5.0, 8.0, 10.0];
+                const ibs = [20, 40, 60, 80];
+                const diagnostics = [];
+                let errorDetected = false;
+
+                ibs.forEach((ib, idx) => {
+                    const rowData = [];
+                    let isMonotonic = true;
+                    let lastVal = -1;
+
+                    vceX.forEach(vce => {
+                        const inputEl = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce.toFixed(1)}"]`) || document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce}"]`);
+                        if (inputEl) {
+                            const val = parseFloat(inputEl.value) || 0;
+                            rowData.push({ x: vce, y: val });
+
+                            // 単調増加チェック
+                            if (val < lastVal && val > 0) {
+                                isMonotonic = false;
+                                inputEl.classList.add('bg-red-50', 'border-red-500', 'text-red-700');
+                            } else {
+                                inputEl.classList.remove('bg-red-50', 'border-red-500', 'text-red-700');
+                            }
+                            if (val > 0) lastVal = val;
+                        }
+                    });
+
+                    if (chartOutput) {
+                        chartOutput.data.datasets[idx].data = rowData;
+                    }
+
+                    if (!isMonotonic) {
+                        errorDetected = true;
+                        diagnostics.push({
+                            type: 'danger',
+                            text: `$I_B = ${ib}\,\mu\text{A}$ で電圧増加に対して電流値が下降する異常（物理的な矛盾）を検知しました。`
+                        });
+                    }
+                });
+
+                // 飽和特性チェック (0.2Vから0.6Vでの変化幅が十分大きいか)
+                let saturationNormal = true;
+                ibs.forEach(ib => {
+                    const ic_02_el = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="0.2"]`);
+                    const ic_06_el = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="0.6"]`);
+                    const ic_10_el = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="1.0"]`);
+                    const ic_100_el = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="10.0"]`);
+
+                    if (ic_02_el && ic_06_el && ic_10_el && ic_100_el) {
+                        const ic_02 = parseFloat(ic_02_el.value) || 0;
+                        const ic_06 = parseFloat(ic_06_el.value) || 0;
+                        const ic_10 = parseFloat(ic_10_el.value) || 0;
+                        const ic_100 = parseFloat(ic_100_el.value) || 0;
+
+                        const rise_start = ic_06 - ic_02;
+                        const rise_end = ic_100 - ic_10;
+
+                        if (rise_start < rise_end && ic_100 > 0) {
+                            saturationNormal = false;
+                        }
+                    }
+                });
+
+                if (!saturationNormal) {
+                    diagnostics.push({
+                        type: 'warning',
+                        text: `飽和領域（低電圧部）からの立ち上がりが鈍いです。トランジスタ特有の「低電圧域で急上昇し高電圧域で安定する」特性が得られているか確認してください。`
+                    });
+                }
+
+                if (diagnostics.length === 0) {
+                    diagnostics.push({
+                        type: 'success',
+                        text: '出力特性の物理変化トレンドは正常です。測定データに矛盾は見られません。'
+                    });
+                }
+
+                renderDiagnostics('diagnostics-output', diagnostics);
+                if (chartOutput) chartOutput.update();
+            } catch(e) {
+                console.error("Output Characteristic update failed: ", e);
+            }
+        }
+
+        // 最小二乗法による指数フィッティング ( y = a * e^(b * x) ) のパラメータ計算
+        function fitExponential(points) {
+            // 対数計算のため、yが十分に正の数(I_B > 0.1μA)であるプロットのみを使用
+            const validPoints = points.filter(p => p.y > 0.1);
+            if (validPoints.length < 2) return null;
+
+            let sumX = 0, sumY = 0, sumXX = 0, sumXY = 0;
+            const n = validPoints.length;
+
+            validPoints.forEach(p => {
+                const lnY = Math.log(p.y);
+                sumX += p.x;
+                sumY += lnY;
+                sumXX += p.x * p.x;
+                sumXY += p.x * lnY;
+            });
+
+            const denominator = (n * sumXX - sumX * sumX);
+            if (denominator === 0) return null;
+
+            const b = (n * sumXY - sumX * sumY) / denominator;
+            const A = (sumY - b * sumX) / n;
+            const a = Math.exp(A);
+
+            return { a: a, b: b };
+        }
+
+        // 3. 入力特性 (V_BE - I_B) : ハイブリッド統合マッピング＋最小二乗近似曲線
+        function updateInputData() {
+            try {
+                const rawPoints = [];
+                const diagnostics = [];
+                let isMonotonic = true;
+
+                // 前半ステップデータの読み込み (V_BE 指定 0.2V 〜 0.6V の5ステップ)
+                const vbeFixedSteps = [0.2, 0.3, 0.4, 0.5, 0.6];
+                vbeFixedSteps.forEach((vbe, idx) => {
+                    const el = document.querySelector(`.in-ib[data-idx="${idx}"]`);
+                    if (el) {
+                        const val_ib = parseFloat(el.value) || 0;
+                        rawPoints.push({ x: vbe, y: val_ib });
+                    }
+                });
+
+                // 後半ステップデータの読み込み (I_B 指定 10.0μA 〜 80.0μA の4ステップ)
+                const ibFixedSteps = [10.0, 20.0, 50.0, 80.0];
+                ibFixedSteps.forEach((ib, i) => {
+                    const idx = i + 5; // 後半セルのインデックスは5,6,7,8 (計9点)
+                    const el = document.querySelector(`.in-vbe[data-idx="${idx}"]`);
+                    if (el) {
+                        const val_vbe = parseFloat(el.value) || 0;
+                        rawPoints.push({ x: val_vbe, y: ib });
+                    }
+                });
+
+                // X軸 (V_BE) の昇順で物理ソートを行う
+                rawPoints.sort((a, b) => a.x - b.x);
+
+                // 測定値プロット（点のみ表示）データセットへ投入
+                if (chartInput) {
+                    chartInput.data.datasets[0].data = rawPoints;
+                }
+
+                // 指数近似曲線の計算
+                const fit = fitExponential(rawPoints);
+                const curvePoints = [];
+                let fitFormulaString = "";
+
+                if (fit && fit.b > 0) {
+                    // X軸の範囲 (0.15V 〜 0.75V) を120等分して滑らかな曲線をプロット
+                    const startX = 0.2;
+                    const endX = 0.75;
+                    const steps = 120;
+                    for (let i = 0; i <= steps; i++) {
+                        const x = startX + (endX - startX) * (i / steps);
+                        const y = fit.a * Math.exp(fit.b * x);
+                        // Y軸の上限付近（90uA）までにプロット制限
+                        if (y <= 120) {
+                            curvePoints.push({ x: x, y: y });
+                        }
+                    }
+                    fitFormulaString = `$I_B = ${fit.a.toExponential(3)} \\cdot e^{${fit.b.toFixed(2)} \\cdot V_{BE}}$`;
+                    // 近似曲線データセットへ投入
+                    chartInput.data.datasets[1].data = curvePoints;
+                } else {
+                    // 近似失敗時は空にする
+                    chartInput.data.datasets[1].data = [];
+                }
+
+                // 物理妥当性バリデーション: 単調増加チェック (ソートされたリストを基準に評価)
+                let lastY = -1;
+                for (let i = 0; i < rawPoints.length; i++) {
+                    const pt = rawPoints[i];
+                    if (pt.x > 0 && pt.y < lastY) {
+                        isMonotonic = false;
+                    }
+                    if (pt.y > 0) lastY = pt.y;
+                }
+
+                // 各種入力警告
+                if (!isMonotonic) {
+                    diagnostics.push({
+                        type: 'danger',
+                        text: 'ベース-エミッタ間電圧 $V_{BE}$ の増加に対し、ベース電流 $I_B$ が下降する矛盾したプロットが検知されました。前半・後半の測定値および配線の接続、計器のレンジを確かめてください。'
+                    });
+                }
+
+                const pt_80 = rawPoints.find(pt => pt.y === 80.0);
+                if (pt_80 && pt_80.x > 0.8) {
+                    diagnostics.push({
+                        type: 'warning',
+                        text: 'I_B = 80 μA での V_BE が 0.8V を超過しています。シリコントランジスタの接合障壁値としては高すぎます。メーターの接続箇所（テスタ棒の接触抵抗）や計器自体の内部オフセットを校正してください。'
+                    });
+                }
+
+                const pt_10 = rawPoints.find(pt => pt.y === 10.0);
+                if (pt_10 && pt_10.x > 0 && pt_10.x < 0.5) {
+                    diagnostics.push({
+                        type: 'warning',
+                        text: 'ベース電流が流れ始めているにもかかわらず、V_BE が 0.5V 未満と異常に低いです。メーターのゼロ点調整が必要です。'
+                    });
+                }
+
+                if (diagnostics.length === 0) {
+                    let successMsg = '入力特性は正常なPN接合の指数関数特性（順方向動作）を示しています。電圧・電流 of ハイブリッド測定による整合性は完璧です。';
+                    if (fitFormulaString) {
+                        successMsg += `<br><span class="font-bold block mt-1.5">📈 自動算出した順方向近似物理式:</span><span class="text-sm text-emerald-900 bg-emerald-100/50 py-1 px-2.5 rounded block mt-1 border border-emerald-200/50">${fitFormulaString}</span>`;
+                    }
+                    diagnostics.push({
+                        type: 'success',
+                        text: successMsg
+                    });
+                }
+
+                renderDiagnostics('diagnostics-input', diagnostics);
+                if (chartInput) chartInput.update();
+            } catch(e) {
+                console.error("Input Characteristic update failed: ", e);
+            }
+        }
+
+        // 2. 伝達特性 (I_B - I_C)
+        function updateTransferData() {
+            try {
+                const ibX = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0];
+                const data = [];
+                const diagnostics = [];
+                let hfeValues = [];
+
+                ibX.forEach(ib => {
+                    const inputEl = document.querySelector(`.tf-input[data-ib="${ib.toFixed(1)}"]`);
+                    if (inputEl) {
+                        const val = parseFloat(inputEl.value) || 0;
+                        data.push({ x: ib, y: val });
+
+                        if (ib > 0) {
+                            const hfe = (val / ib) * 1000;
+                            hfeValues.push(hfe);
+                        }
+                    }
+                });
+
+                if (chartTransfer) {
+                    chartTransfer.data.datasets[0].data = data;
+                }
+
+                if (hfeValues.length > 0) {
+                    const avgHfe = hfeValues.reduce((a, b) => a + b, 0) / hfeValues.length;
+                    let classification = "分類外（異常値）";
+
+                    if (avgHfe >= 70 && avgHfe < 140) classification = "2SC1815-O (Oランク: 70〜140)";
+                    else if (avgHfe >= 120 && avgHfe < 240) classification = "2SC1815-Y (Yランク: 120〜240)";
+                    else if (avgHfe >= 200 && avgHfe <= 400) classification = "2SC1815-GR (GRランク: 200〜400)";
+
+                    diagnostics.push({
+                        type: 'info',
+                        text: `平均 $h_{FE}$ (直流電流増幅率): **${avgHfe.toFixed(1)}** (分類目安: ${classification})`
+                    });
+
+                    const variance = hfeValues.reduce((sum, val) => sum + Math.pow(val - avgHfe, 2), 0) / hfeValues.length;
+                    const stdDev = Math.sqrt(variance);
+
+                    if (stdDev / avgHfe > 0.15) {
+                        diagnostics.push({
+                            type: 'warning',
+                            text: '$h_{FE}$ の値に線形性の乱れ（測定ブレ）がみられます。再確認を推奨します。'
+                        });
+                    } else {
+                        diagnostics.push({
+                            type: 'success',
+                            text: '高い線形性を維持しています。データの一貫性は良好です。'
+                        });
+                    }
+                }
+
+                renderDiagnostics('diagnostics-transfer', diagnostics);
+                if (chartTransfer) chartTransfer.update();
+            } catch(e) {
+                console.error("Transfer Characteristic update failed: ", e);
+            }
+        }
+
+        // 4. 直流負荷線
+        function updateLoadlineData() {
+            try {
+                const vceX = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+                const data = [];
+                const diagnostics = [];
+                const Ec = 9.0;
+                const Rc = 390.0;
+                let totalError = 0;
+                let hasSignificantDeviation = false;
+
+                vceX.forEach((vce, index) => {
+                    const inputEl = document.querySelector(`.ld-input[data-vce="${vce.toFixed(1)}"]`);
+                    if (inputEl) {
+                        const icVal = parseFloat(inputEl.value) || 0;
+                        data.push({ x: vce, y: icVal });
+
+                        const theoreticalIc = ((Ec - vce) / Rc) * 1000;
+                        const diff = Math.abs(icVal - theoreticalIc);
+                        totalError += diff;
+
+                        if (diff > 1.5 && icVal > 0) {
+                            hasSignificantDeviation = true;
+                            inputEl.classList.add('bg-red-50', 'border-red-500', 'text-red-700');
+                        } else {
+                            inputEl.classList.remove('bg-red-50', 'border-red-500', 'text-red-700');
+                        }
+                    }
+                });
+
+                if (chartLoadline) {
+                    chartLoadline.data.datasets[1].data = data;
+                }
+
+                const avgError = totalError / vceX.length;
+
+                if (hasSignificantDeviation) {
+                    diagnostics.push({
+                        type: 'danger',
+                        text: 'オームの法則の理論線から大きく解離した測定点があります。結線抵抗などを再測定してください。'
+                    });
+                } else if (avgError < 0.5) {
+                    diagnostics.push({
+                        type: 'success',
+                        text: '負荷線上の実測データは完璧に理論式に収束しています。'
+                    });
+                } else {
+                    diagnostics.push({
+                        type: 'info',
+                        text: `測定理論偏差：${avgError.toFixed(2)} mA （誤差限界内）`
+                    });
+                }
+
+                renderDiagnostics('diagnostics-loadline', diagnostics);
+                if (chartLoadline) chartLoadline.update();
+            } catch(e) {
+                console.error("Loadline Characteristic update failed: ", e);
+            }
+        }
+
+        // アラート描画
+        function renderDiagnostics(containerId, diagnosticsList) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            container.innerHTML = '';
+
+            diagnosticsList.forEach(item => {
+                let bg, border, text, symbol;
+                if (item.type === 'success') {
+                    bg = 'bg-emerald-50'; border = 'border-emerald-200'; text = 'text-emerald-800'; symbol = '✅';
+                } else if (item.type === 'warning') {
+                    bg = 'bg-amber-50'; border = 'border-amber-200'; text = 'text-amber-800'; symbol = '⚠️';
+                } else if (item.type === 'danger') {
+                    bg = 'bg-rose-50'; border = 'border-rose-200'; text = 'text-rose-800'; symbol = '🚨';
+                } else {
+                    bg = 'bg-blue-50'; border = 'border-blue-200'; text = 'text-blue-800'; symbol = 'ℹ️';
+                }
+
+                container.innerHTML += `
+                    <div class="flex items-start gap-2 p-2 rounded border ${bg} ${border} ${text} text-xs transition duration-300">
+                        <span class="flex-shrink-0">${symbol}</span>
+                        <div>${item.text}</div>
+                    </div>
+                `;
+            });
+
+            // 動的に追加された数式表記を MathJax で再変換する
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise([container]).catch(function (err) {
+                    console.error("MathJax typeset failed on container: ", err.message);
+                });
+            }
+        }
+
+        function updateAll() {
+            updateOutputData();
+            updateInputData();
+            updateTransferData();
+            updateLoadlineData();
+        }
+
+        // 全特性サンプルデータの読み込み
+        function loadSampleData() {
+            try {
+                // 1. 出力特性 (10点測定データに対応)
+                const ibs = [20, 40, 60, 80];
+                const vceOutput = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 5.0, 8.0, 10.0];
+                ibs.forEach(ib => {
+                    vceOutput.forEach((vce, idx) => {
+                        const el = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce.toFixed(1)}"]`) || document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce}"]`);
+                        if (el) el.value = sampleData.output[ib][idx];
+                    });
+                });
+
+                // 3. 入力特性（前半5点は V_BE指定、後半4点は I_B指定）
+                const vbeFixedSteps = [0.2, 0.3, 0.4, 0.5, 0.6];
+                vbeFixedSteps.forEach((vbe, idx) => {
+                    const el = document.querySelector(`.in-ib[data-idx="${idx}"]`);
+                    if (el) el.value = sampleData.input.vbe_fixed_ib[idx];
+                });
+
+                const ibFixedSteps = [10.0, 20.0, 50.0, 80.0];
+                ibFixedSteps.forEach((ib, i) => {
+                    const idx = i + 5; // idx 5〜8
+                    const el = document.querySelector(`.in-vbe[data-idx="${idx}"]`);
+                    if (el) el.value = sampleData.input.ib_fixed_vbe[i];
+                });
+
+                // 2. 伝達特性
+                const ibTransfer = [0, 10, 20, 30, 40, 50, 60, 70, 80];
+                ibTransfer.forEach((ib, idx) => {
+                    const el = document.querySelector(`.tf-input[data-ib="${ib.toFixed(1)}"]`);
+                    if (el) el.value = sampleData.transfer.ic[idx];
+                });
+
+                // 4. 直流負荷線
+                const vceLoadline = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+                vceLoadline.forEach((vce, idx) => {
+                    const el = document.querySelector(`.ld-input[data-vce="${vce.toFixed(1)}"]`);
+                    if (el) el.value = sampleData.loadline.ic[idx];
+                });
+
+                updateAll();
+            } catch(e) {
+                console.error("Failed to load sample data: ", e);
+            }
+        }
+
+        // データの初期化
+        function resetData() {
+            document.querySelectorAll('input[type="number"]').forEach(input => {
+                input.value = "0";
+            });
+            updateAll();
+        }
+
+        // チャートの画像エクスポート
+        function downloadChart(chartId) {
+            const canvas = document.getElementById(chartId);
+            if (!canvas) return;
+            const link = document.createElement('a');
+            link.download = `${chartId}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        // --- 💾 CSVファイルのエクスポートヘルパー関数（UTF-8 BOM付き） ---
+        function downloadCSV(csvContent, filename) {
+            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]); // Excelの文字化けを防ぐためのBOM
+            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+
+        // 1. 出力特性 (V_CE - I_C) の単独CSV保存
+        function exportOutputToCSV() {
+            const vceX = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 5.0, 8.0, 10.0];
+            const ibs = [20, 40, 60, 80];
+            
+            let csv = "1.出力特性測定データ (V_CE - I_C)\n";
+            csv += "ベース電流 I_B [μA] \\ コレクターエミッタ間電圧 V_CE [V]," + vceX.map(v => `${v}V`).join(",") + "\n";
+            
+            ibs.forEach(ib => {
+                let row = `I_B = ${ib} μA`;
+                vceX.forEach(vce => {
+                    const el = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce.toFixed(1)}"]`) || document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce}"]`);
+                    const val = el ? el.value : "0";
+                    row += `,${val}`;
+                });
+                csv += row + "\n";
+            });
+            
+            downloadCSV(csv, "transistor_output_characteristics.csv");
+        }
+
+        // 2. 伝達特性 (I_B - I_C) の単独CSV保存
+        function exportTransferToCSV() {
+            const ibX = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0];
+            let csv = "2.伝達特性測定データ (I_B - I_C)\n";
+            csv += "ベース電流 I_B [μA]," + ibX.join(",") + "\n";
+            
+            let row = "コレクタ電流 I_C [mA]";
+            ibX.forEach(ib => {
+                const el = document.querySelector(`.tf-input[data-ib="${ib.toFixed(1)}"]`);
+                const val = el ? el.value : "0";
+                row += `,${val}`;
+            });
+            csv += row + "\n";
+            
+            downloadCSV(csv, "transistor_transfer_characteristics.csv");
+        }
+
+        // 3. 入力特性 (V_BE - I_B) の単独CSV保存
+        function exportInputToCSV() {
+            let csv = "3.入力特性測定データ (V_BE - I_B)\n";
+            csv += "測定点順(V_BE順にソート),1,2,3,4,5,6,7,8,9\n";
+            
+            const dataPoints = [];
+            // 前半5ステップ
+            const vbeFixedSteps = [0.2, 0.3, 0.4, 0.5, 0.6];
+            vbeFixedSteps.forEach((vbe, idx) => {
+                const el = document.querySelector(`.in-ib[data-idx="${idx}"]`);
+                const val_ib = el ? parseFloat(el.value) || 0 : 0;
+                dataPoints.push({ x: vbe, y: val_ib, method: "V_BE指定測定" });
+            });
+            // 後半4ステップ
+            const ibFixedSteps = [10.0, 20.0, 50.0, 80.0];
+            ibFixedSteps.forEach((ib, i) => {
+                const idx = i + 5;
+                const el = document.querySelector(`.in-vbe[data-idx="${idx}"]`);
+                const val_vbe = el ? parseFloat(el.value) || 0 : 0;
+                dataPoints.push({ x: val_vbe, y: ib, method: "I_B固定測定" });
+            });
+            
+            // X軸(電圧)昇順にソートしてCSV出力
+            dataPoints.sort((a, b) => a.x - b.x);
+            
+            csv += "ベース・エミッタ間電圧 V_BE [V]," + dataPoints.map(p => p.x).join(",") + "\n";
+            csv += "ベース電流 I_B [μA]," + dataPoints.map(p => p.y).join(",") + "\n";
+            csv += "測定方法分類," + dataPoints.map(p => p.method).join(",") + "\n";
+            
+            downloadCSV(csv, "transistor_input_characteristics.csv");
+        }
+
+        // 4. 直流負荷線 (V_CE - I_C) の単独CSV保存
+        function exportLoadlineToCSV() {
+            const vceX = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+            let csv = "4.直流負荷線特性測定データ (E_C = 9.0V, R_C = 390Ω)\n";
+            csv += "設定コレクターエミッタ間電圧 V_CE [V]," + vceX.join(",") + "\n";
+            
+            let rowReal = "実測コレクタ電流 I_C [mA]";
+            let rowTheo = "理論コレクタ電流 I_C [mA] (参考値)";
+            
+            vceX.forEach(vce => {
+                const el = document.querySelector(`.ld-input[data-vce="${vce.toFixed(1)}"]`);
+                const val = el ? el.value : "0";
+                rowReal += `,${val}`;
+                
+                // 理論値計算 Ic = (Ec - Vce) / Rc
+                const theoreticalIc = ((9.0 - vce) / 390.0) * 1000;
+                rowTheo += `,${theoreticalIc.toFixed(3)}`;
+            });
+            
+            csv += rowReal + "\n";
+            csv += rowTheo + "\n";
+            
+            downloadCSV(csv, "transistor_load_line_characteristics.csv");
+        }
+
+        // 🗂️ 4つの実験特性すべてを1つのCSVファイル（セクション区切り）にまとめて一括保存
+        function exportAllToCSV() {
+            let combinedCsv = "";
+
+            // Section 1: 出力特性
+            const vceXOut = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 2.0, 5.0, 8.0, 10.0];
+            const ibsOut = [20, 40, 60, 80];
+            combinedCsv += "■ 1. 出力特性測定データ (V_CE - I_C)\n";
+            combinedCsv += "ベース電流 I_B [μA] \\ 電圧 V_CE [V]," + vceXOut.map(v => `${v}V`).join(",") + "\n";
+            ibsOut.forEach(ib => {
+                let row = `I_B = ${ib} μA`;
+                vceXOut.forEach(vce => {
+                    const el = document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce.toFixed(1)}"]`) || document.querySelector(`.out-input[data-ib="${ib}"][data-vce="${vce}"]`);
+                    row += `,${el ? el.value : "0"}`;
+                });
+                combinedCsv += row + "\n";
+            });
+            combinedCsv += "\n\n";
+
+            // Section 2: 伝達特性
+            const ibXTrans = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0];
+            combinedCsv += "■ 2. 伝達特性測定データ (I_B - I_C)\n";
+            combinedCsv += "ベース電流 I_B [μA]," + ibXTrans.join(",") + "\n";
+            let rowTrans = "コレクタ電流 I_C [mA]";
+            ibXTrans.forEach(ib => {
+                const el = document.querySelector(`.tf-input[data-ib="${ib.toFixed(1)}"]`);
+                rowTrans += `,${el ? el.value : "0"}`;
+            });
+            combinedCsv += rowTrans + "\n\n\n";
+
+            // Section 3: 入力特性
+            combinedCsv += "■ 3. 入力特性測定データ (V_BE - I_B)\n";
+            const dataPointsIn = [];
+            const vbeFixedIn = [0.2, 0.3, 0.4, 0.5, 0.6];
+            vbeFixedIn.forEach((vbe, idx) => {
+                const el = document.querySelector(`.in-ib[data-idx="${idx}"]`);
+                dataPointsIn.push({ x: vbe, y: el ? parseFloat(el.value) || 0 : 0, method: "V_BE指定測定" });
+            });
+            const ibFixedIn = [10.0, 20.0, 50.0, 80.0];
+            ibFixedIn.forEach((ib, i) => {
+                const idx = i + 5;
+                const el = document.querySelector(`.in-vbe[data-idx="${idx}"]`);
+                dataPointsIn.push({ x: el ? parseFloat(el.value) || 0 : 0, y: ib, method: "I_B固定測定" });
+            });
+            dataPointsIn.sort((a, b) => a.x - b.x);
+            combinedCsv += "ベース・エミッタ間電圧 V_BE [V]," + dataPointsIn.map(p => p.x).join(",") + "\n";
+            combinedCsv += "ベース電流 I_B [μA]," + dataPointsIn.map(p => p.y).join(",") + "\n";
+            combinedCsv += "測定方法分類," + dataPointsIn.map(p => p.method).join(",") + "\n\n\n";
+
+            // Section 4: 直流負荷線
+            const vceXLoad = [9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+            combinedCsv += "■ 4. 直流負荷線特性測定データ (E_C = 9.0V, R_C = 390Ω)\n";
+            combinedCsv += "設定コレクターエミッタ間電圧 V_CE [V]," + vceXLoad.join(",") + "\n";
+            let rowLoadReal = "実測コレクタ電流 I_C [mA]";
+            let rowLoadTheo = "理論コレクタ電流 I_C [mA]";
+            vceXLoad.forEach(vce => {
+                const el = document.querySelector(`.ld-input[data-vce="${vce.toFixed(1)}"]`);
+                rowLoadReal += `,${el ? el.value : "0"}`;
+                rowLoadTheo += `,${(((9.0 - vce) / 390.0) * 1000).toFixed(3)}`;
+            });
+            combinedCsv += rowLoadReal + "\n" + rowLoadTheo + "\n";
+
+            // ファイル出力
+            downloadCSV(combinedCsv, "transistor_all_characteristics_data.csv");
+        }
+
+        // --- Chart.js チャート初期化処理 ---
+        function initCharts() {
+            // 1. 出力特性 (V_CE - I_C)
+            const canvasOut = document.getElementById('chart-output');
+            if (canvasOut) {
+                const ctxOut = canvasOut.getContext('2d');
+                chartOutput = new Chart(ctxOut, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            { label: 'Iʙ = 20 μA', data: [], borderColor: 'rgb(79, 70, 229)', backgroundColor: 'rgba(79, 70, 229, 0.05)', tension: 0.15, showLine: true },
+                            { label: 'Iʙ = 40 μA', data: [], borderColor: 'rgb(16, 185, 129)', backgroundColor: 'rgba(16, 185, 129, 0.05)', tension: 0.15, showLine: true },
+                            { label: 'Iʙ = 60 μA', data: [], borderColor: 'rgb(245, 158, 11)', backgroundColor: 'rgba(245, 158, 11, 0.05)', tension: 0.15, showLine: true },
+                            { label: 'Iʙ = 80 μA', data: [], borderColor: 'rgb(236, 72, 153)', backgroundColor: 'rgba(236, 72, 153, 0.05)', tension: 0.15, showLine: true }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: {
+                            x: { 
+                                type: 'linear',
+                                title: { display: true, text: 'Vᴄᴇ (コレクターエミッタ間電圧) [V]' },
+                                min: 0,
+                                max: 10,
+                                ticks: { stepSize: 1 }
+                            },
+                            y: { title: { display: true, text: 'Iᴄ (コレクタ電流) [mA]' }, min: 0, max: 16 }
+                        }
+                    }
+                });
+            }
+
+            // 3. 入力特性 (V_BE - I_B) : X軸は実測V_BE, Y軸は実測/設定I_B
+            const canvasIn = document.getElementById('chart-input');
+            if (canvasIn) {
+                const ctxIn = canvasIn.getContext('2d');
+                chartInput = new Chart(ctxIn, {
+                    type: 'scatter', 
+                    data: {
+                        datasets: [
+                            {
+                                label: '測定値 (V原生 - Iʙ)',
+                                data: [],
+                                borderColor: 'rgba(16, 185, 129, 0.5)',
+                                backgroundColor: 'rgb(16, 185, 129)',
+                                pointRadius: 6,
+                                showLine: false 
+                            },
+                            {
+                                label: '指数近似曲線 (Iʙ = a・e^(b・Vʙᴇ))',
+                                data: [],
+                                borderColor: 'rgb(16, 185, 129)',
+                                borderWidth: 2,
+                                borderDash: [], 
+                                fill: false,
+                                pointRadius: 0, 
+                                showLine: true, 
+                                tension: 0.15
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { 
+                                type: 'linear',
+                                title: { display: true, text: 'Vʙᴇ (ベース-エミッタ間電圧) [V]' },
+                                min: 0.2,
+                                max: 0.8,
+                                ticks: { stepSize: 0.1 }
+                            },
+                            y: { title: { display: true, text: 'Iʙ (ベース電流) [μA]' }, min: 0, max: 90 }
+                        }
+                    }
+                });
+            }
+
+            // 2. 伝達特性 (I_B - I_C)
+            const canvasTf = document.getElementById('chart-transfer');
+            if (canvasTf) {
+                const ctxTf = canvasTf.getContext('2d');
+                chartTransfer = new Chart(ctxTf, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: '増幅特性 (I game - Iᴄ)',
+                            data: [],
+                            borderColor: 'rgb(147, 51, 234)',
+                            backgroundColor: 'rgba(147, 51, 234, 0.05)',
+                            tension: 0.1,
+                            fill: false,
+                            pointStyle: 'rectRot',
+                            pointRadius: 5,
+                            showLine: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { 
+                                type: 'linear',
+                                title: { display: true, text: 'I game (ベース電流) [μA]' },
+                                min: 0,
+                                max: 80,
+                                ticks: { stepSize: 10 }
+                            },
+                            y: { title: { display: true, text: 'Iᴄ (コレクタ電流) [mA]' }, min: 0, max: 15 }
+                        }
+                    }
+                });
+            }
+
+            // 4. 直流負荷線
+            const canvasLd = document.getElementById('chart-loadline');
+            if (canvasLd) {
+                const ctxLd = canvasLd.getContext('2d');
+                const idealLinePoints = [];
+                for (let v = 9.0; v >= 0; v -= 0.5) {
+                    idealLinePoints.push({ x: v, y: ((9.0 - v) / 390) * 1000 });
+                }
+
+                chartLoadline = new Chart(ctxLd, {
+                    type: 'scatter',
+                    data: {
+                        datasets: [
+                            {
+                                label: '理論負荷線 (Eᴄ = 9 V, Rᴄ = 390 Ω)',
+                                data: idealLinePoints,
+                                type: 'line',
+                                borderColor: 'rgba(239, 68, 68, 0.7)',
+                                borderDash: [5, 4],
+                                pointRadius: 0,
+                                fill: false
+                            },
+                            {
+                                label: '測定値 (Vᴄᴇ - Iᴄ)',
+                                data: [],
+                                borderColor: 'rgb(244, 63, 94)',
+                                backgroundColor: 'rgb(244, 63, 94)',
+                                pointRadius: 5,
+                                showLine: true,
+                                tension: 0.1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'linear',
+                                position: 'bottom',
+                                title: { display: true, text: 'Vᴄᴇ (コレクターエミッタ間電圧) [V]' },
+                                min: 0,
+                                max: 10,
+                                ticks: { stepSize: 1 }
+                            },
+                            y: {
+                                title: { display: true, text: 'Iᴄ (コレクタ電流) [mA]' },
+                                min: 0,
+                                max: 25
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
