@@ -62,6 +62,10 @@
                 <button onclick="exportAllToCSV()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition flex items-center gap-1">
                     <span>💾</span> 全データ一括CSV保存
                 </button>
+                <!-- 💡 画面右側の保存ボタンがない場合の対策：このアプリ自体を1クリックでローカルに保存できるボタン -->
+                <button onclick="downloadSelfHTML()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition flex items-center gap-1 border border-blue-400">
+                    <span>📥</span> このシステム(HTML)を保存
+                </button>
                 <button onclick="resetData()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition">
                     リセット
                 </button>
@@ -569,6 +573,27 @@
             }
         };
 
+        // 💡 修正箇所：Canvasやエディタ側のDLボタンが機能しない場合の救済措置（自立ダウンロード）
+        function downloadSelfHTML() {
+            try {
+                // 現在のHTMLコード全体を取得
+                const fullHTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+                
+                // Blob形式に変換して自動ダウンロードを誘発
+                const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8;' });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", "transistor_analyzer.html");
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (e) {
+                console.error("HTML download failed: ", e);
+            }
+        }
+
         // タブ切り替え制御
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -591,16 +616,6 @@
                 if (tabId === 'tab-loadline' && chartLoadline) chartLoadline.resize();
             }, 50);
         }
-
-        // 初期ロード
-        window.onload = function() {
-            try {
-                initCharts();
-                loadSampleData();
-            } catch (e) {
-                console.error("Initialization error: ", e);
-            }
-        };
 
         // --- Y軸メモリ（最大値）の最適化処理 ---
         function optimizeYScale(type) {
@@ -1055,13 +1070,6 @@
             }
         }
 
-        function updateAll() {
-            updateOutputData();
-            updateInputData();
-            updateTransferData();
-            updateLoadlineData();
-        }
-
         // 全特性サンプルデータの読み込み
         function loadSampleData() {
             try {
@@ -1332,7 +1340,7 @@
                                 max: 10,
                                 ticks: { stepSize: 1 }
                             },
-                            y: { title: { display: true, text: 'Iᴄ (コレクタ電流) [mA]' }, min: 0, max: 16 }
+                            y: { title: { display: true, text: 'I... (コレクタ電流) [mA]' }, min: 0, max: 16 }
                         }
                     }
                 });
@@ -1347,7 +1355,7 @@
                     data: {
                         datasets: [
                             {
-                                label: '測定値 (V原生 - Iʙ)',
+                                label: '測定値 (Vʙᴇ - Iʙ)',
                                 data: [],
                                 borderColor: 'rgba(16, 185, 129, 0.5)',
                                 backgroundColor: 'rgb(16, 185, 129)',
@@ -1400,7 +1408,7 @@
                     type: 'line',
                     data: {
                         datasets: [{
-                            label: '増幅特性 (I game - Iᴄ)',
+                            label: '増幅特性 (Iʙ - Iᴄ)',
                             data: [],
                             borderColor: 'rgb(147, 51, 234)',
                             backgroundColor: 'rgba(147, 51, 234, 0.05)',
@@ -1417,7 +1425,7 @@
                         scales: {
                             x: { 
                                 type: 'linear',
-                                title: { display: true, text: 'I game (ベース電流) [μA]' },
+                                title: { display: true, text: 'Iʙ (ベース電流) [μA]' },
                                 min: 0,
                                 max: 80,
                                 ticks: { stepSize: 10 }
