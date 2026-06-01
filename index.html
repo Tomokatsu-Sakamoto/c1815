@@ -6,8 +6,8 @@
     <title>トランジスタ静特性 リアルタイム測定妥当性検証システム</title>
     <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js (CDN) -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js (CDN - GitHub Pages等で確実にグローバル変数Chartを認識させるUMD版を使用) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
     
     <!-- MathJax の設定と読み込み (数式を美しく表示する) -->
     <script>
@@ -61,10 +61,6 @@
                 </button>
                 <button onclick="exportAllToCSV()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition flex items-center gap-1">
                     <span>💾</span> 全データ一括CSV保存
-                </button>
-                <!-- 💡 画面右側の保存ボタンがない場合の対策：このアプリ自体を1クリックでローカルに保存できるボタン -->
-                <button onclick="downloadSelfHTML()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition flex items-center gap-1 border border-blue-400">
-                    <span>📥</span> このシステム(HTML)を保存
                 </button>
                 <button onclick="resetData()" class="bg-slate-600 hover:bg-slate-700 text-white font-bold px-3 py-1.5 rounded shadow text-xs transition">
                     リセット
@@ -184,7 +180,7 @@
                 </div>
 
                 <!-- 右側：妥当性判定ボード -->
-                <div class="bg-white rounded-xl shadow-md p-4 border border-slate-100 flex flex-col justify-between">
+                <div class="bg-white rounded-xl shadow-sm p-4 border border-slate-100 flex flex-col justify-between">
                     <div>
                         <h3 class="text-sm font-bold text-slate-800 mb-2 flex items-center gap-1">
                             <span class="text-blue-500">🩺</span>
@@ -330,9 +326,6 @@
                             <span class="w-2 h-5 bg-emerald-600 rounded-full inline-block"></span>
                             測定データの入力 : $V_{BE} - I_B$ 特性 (入力特性)
                         </h2>
-                        <button onclick="exportInputToCSV()" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-2 py-1 rounded text-xs transition">
-                            📥 CSV保存
-                        </button>
                     </div>
                     
                     <p class="text-xs text-slate-500 mb-4">
@@ -573,27 +566,6 @@
             }
         };
 
-        // 💡 修正箇所：Canvasやエディタ側のDLボタンが機能しない場合の救済措置（自立ダウンロード）
-        function downloadSelfHTML() {
-            try {
-                // 現在のHTMLコード全体を取得
-                const fullHTML = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
-                
-                // Blob形式に変換して自動ダウンロードを誘発
-                const blob = new Blob([fullHTML], { type: 'text/html;charset=utf-8;' });
-                const link = document.createElement("a");
-                const url = URL.createObjectURL(blob);
-                link.setAttribute("href", url);
-                link.setAttribute("download", "transistor_analyzer.html");
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            } catch (e) {
-                console.error("HTML download failed: ", e);
-            }
-        }
-
         // タブ切り替え制御
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -616,6 +588,16 @@
                 if (tabId === 'tab-loadline' && chartLoadline) chartLoadline.resize();
             }, 50);
         }
+
+        // 初期ロード
+        window.onload = function() {
+            try {
+                initCharts();
+                loadSampleData();
+            } catch (e) {
+                console.error("Initialization error: ", e);
+            }
+        };
 
         // --- Y軸メモリ（最大値）の最適化処理 ---
         function optimizeYScale(type) {
@@ -1070,6 +1052,13 @@
             }
         }
 
+        function updateAll() {
+            updateOutputData();
+            updateInputData();
+            updateTransferData();
+            updateLoadlineData();
+        }
+
         // 全特性サンプルデータの読み込み
         function loadSampleData() {
             try {
@@ -1335,12 +1324,12 @@
                         scales: {
                             x: { 
                                 type: 'linear',
-                                title: { display: true, text: 'Vᴄᴇ (コレクターエミッタ間電圧) [V]' },
+                                title: { display: true, text: 'V court (コレクターエミッタ間電圧) [V]' },
                                 min: 0,
                                 max: 10,
                                 ticks: { stepSize: 1 }
                             },
-                            y: { title: { display: true, text: 'I... (コレクタ電流) [mA]' }, min: 0, max: 16 }
+                            y: { title: { display: true, text: 'Iᴄ (コレクタ電流) [mA]' }, min: 0, max: 16 }
                         }
                     }
                 });
