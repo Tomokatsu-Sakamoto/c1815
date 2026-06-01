@@ -6,8 +6,9 @@
     <title>トランジスタ静特性 リアルタイム測定妥当性検証システム</title>
     <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js (CDN - GitHub Pages等で確実にグローバル変数Chartを認識させるUMD版を使用) -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    
+    <!-- Chart.js (CDN - GitHub Pagesや各種サーバー環境で追加登録なしで完璧にリニアスケールや散布図が自動動作する安定のv3.9.1製品版を使用) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     
     <!-- MathJax の設定と読み込み (数式を美しく表示する) -->
     <script>
@@ -859,7 +860,7 @@
                 if (!isMonotonic) {
                     diagnostics.push({
                         type: 'danger',
-                        text: 'ベース-エミッタ間電圧 $V_{BE}$ の増加に対し、ベース電流 $I_B$ が下降する矛盾したプロットが検知されました。前半・後半の測定値および配線の接続、計器のレンジを確かめてください。'
+                        text: 'ベース-エミッタ間電圧 $V_{BE}$ の増加に対し、ベース電流 $I_B$ が下降する矛盾したプロットが検知されました。前半・後半 of 測定値および配線の接続、計器のレンジを確かめてください。'
                     });
                 }
 
@@ -1052,6 +1053,7 @@
             }
         }
 
+        // 共通更新関数
         function updateAll() {
             updateOutputData();
             updateInputData();
@@ -1324,7 +1326,7 @@
                         scales: {
                             x: { 
                                 type: 'linear',
-                                title: { display: true, text: 'V court (コレクターエミッタ間電圧) [V]' },
+                                title: { display: true, text: 'Vᴄᴇ (コレクターエミッタ間電圧) [V]' },
                                 min: 0,
                                 max: 10,
                                 ticks: { stepSize: 1 }
